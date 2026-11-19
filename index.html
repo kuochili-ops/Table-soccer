@@ -20,7 +20,7 @@
       margin: 0;
       padding: 0;
       width: 100%;
-      height: 100%;
+      height: 100dvh;
       overflow: hidden;
       font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #0f172a;
@@ -40,14 +40,14 @@
       touch-action: none;
     }
     .glass-panel {
-      background: rgba(255, 255, 255, 0.92);
+      background: rgba(255, 255, 255, 0.93);
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.78);
       box-shadow: 0 10px 30px rgba(15, 23, 42, 0.22);
     }
     .dark-glass {
-      background: rgba(15, 23, 42, 0.80);
+      background: rgba(15, 23, 42, 0.82);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.16);
@@ -104,7 +104,7 @@
   <div id="hud-bottom" class="hidden fixed bottom-2.5 left-0 right-0 z-20 px-3 flex justify-center pointer-events-none">
     <div class="dark-glass text-white/95 text-[11px] sm:text-xs px-4 py-2 rounded-full flex items-center gap-2 shadow-lg text-center">
       <span id="team-badge" class="px-2 py-0.5 rounded-full font-bold bg-red-600 text-white whitespace-nowrap">您控制：紅隊</span>
-      <span>按住<b>我方任一球桿或把手</b>左右平移、上下前傾/後傾踢球（支援多指控桿 &amp; 兩指縮放畫面）</span>
+      <span>按住<b>我方任一球桿或把手</b>左右平移、上下前傾/後傾踢球（放開自動回正・兩指縮放畫面）</span>
     </div>
   </div>
 
@@ -170,10 +170,11 @@
       </div>
 
       <div class="bg-slate-100/90 rounded-2xl p-3.5 text-left text-xs text-slate-600 space-y-1">
-        <div class="font-bold text-slate-800 text-sm mb-1">🎮 操控提示：</div>
+        <div class="font-bold text-slate-800 text-sm mb-1">🎮 操控說明：</div>
         <div>• <b>整支球桿皆可觸控</b>：手指按住我方<b>黑色把手或任何一段金屬桿身</b>即可操控，支援多指同時控桿。</div>
-        <div>• <b>左右平移 &amp; 上下踢球</b>：左右滑動與畫面方向 1:1 同步平移玩偶；上下拖曳控制前傾或後傾射門，<b>放開手指自動彈回垂直</b>。</div>
-        <div>• <b>兩指縮放與平移</b>：雙指在空白處捏合可縮放畫面遠近，雙指拖曳可移動視野。</div>
+        <div>• <b>畫面左右 1:1 同步</b>：手指往畫面左滑，玩偶即往畫面左方移動；往右滑即往右移動。</div>
+        <div>• <b>前傾 / 後傾踢球</b>：上下推拉控制玩偶前傾射門或後傾解圍，<b>放開手指自動彈回垂直</b>。</div>
+        <div>• <b>兩指縮放與平移</b>：雙指在空白處捏合縮放畫面遠近，雙指拖曳移動視野，雙擊重置鏡頭。</div>
       </div>
     </div>
   </div>
@@ -183,31 +184,37 @@
       'use strict';
 
       // =========================================================================
-      // 1. 球檯幾何與物理常數配置 (單位：公尺)
+      // 1. 球檯幾何與物理常數配置
+      //    座標系設計：
+      //    - X 軸：球場長度方向 (-12.0 ~ +12.0)，紅隊球門在 -12.0 (進攻方向 +1)，黃隊球門在 +12.0 (進攻方向 -1)
+      //    - Y 軸：垂直高度方向，草皮表面 Y = 0，球桿中心 Y = 1.72
+      //    - Z 軸：球場寬度方向 (-7.0 ~ +7.0，內寬 W = 14.0)，球桿沿 Z 軸橫向滑動
       // =========================================================================
       const TABLE = {
-        fieldWidth: 0.68,        // 球場內寬 (X 軸: -0.34 ~ +0.34)
-        fieldLength: 1.18,       // 球場內長 (Z 軸: -0.59 ~ +0.59)
-        wallThickness: 0.036,    // 木框厚度
-        wallHeight: 0.135,       // 木框高度
-        rodHeight: 0.084,        // 球桿中心離草皮高度
-        ballRadius: 0.0175,      // 足球半徑
-        goalWidth: 0.205,        // 球門開口寬度
-        goalHeight: 0.082,       // 球門開口高度
-        winScore: 7              // 先得 7 分獲勝 (計分器支援 0-9)
+        halfLength: 12.0,        // 球場半長 (X: -12.0 ~ +12.0，總長 24.0)
+        halfWidth: 7.0,          // 球場半寬 (Z: -7.0 ~ +7.0，內寬 W = 14.0)
+        wallThickness: 0.8,      // 木框厚度 (Z: ±7.0 ~ ±7.8)
+        wallHeight: 2.75,        // 木框高度
+        rodHeight: 1.72,         // 球桿中心離草皮高度
+        ballRadius: 0.36,        // 足球半徑
+        goalHalfWidth: 2.15,     // 球門開口半寬 (總寬 4.30)
+        goalHeight: 1.75,        // 球門開口高度
+        bumperWidth: 0.35,       // 內壁橡膠緩衝墊寬度
+        playerHalfWidth: 0.38,   // 玩偶半寬
+        winScore: 7              // 先得 7 分獲勝 (頂部計分器支援 0-9)
       };
 
-      // 8 支球桿配置 (3-2-3-3 雙隊 11 人陣型)
-      // Z < 0 為紅隊球門半場 (紅隊進攻方向 +Z)；Z > 0 為黃隊球門半場 (黃隊進攻方向 -Z)
+      // 8 支球桿配置 (每隊 11 人：3-2-3-3 經典陣型)
+      // handleSide: +1 表示黑色把手位於 +Z 側，-1 表示黑色把手位於 -Z 側
       const ROD_CONFIGS = [
-        { id: 0, team: 'red',    role: 'gk',  z: -0.505, offsets: [-0.145, 0, 0.145], isKeeperCenter: true,  handleSide: -1 },
-        { id: 1, team: 'red',    role: 'def', z: -0.360, offsets: [-0.135, 0.135],     isKeeperCenter: false, handleSide: -1 },
-        { id: 2, team: 'yellow', role: 'fwd', z: -0.215, offsets: [-0.185, 0, 0.185], isKeeperCenter: false, handleSide:  1 },
-        { id: 3, team: 'red',    role: 'mid', z: -0.072, offsets: [-0.185, 0, 0.185], isKeeperCenter: false, handleSide: -1 },
-        { id: 4, team: 'yellow', role: 'mid', z:  0.072, offsets: [-0.185, 0, 0.185], isKeeperCenter: false, handleSide:  1 },
-        { id: 5, team: 'red',    role: 'fwd', z:  0.215, offsets: [-0.185, 0, 0.185], isKeeperCenter: false, handleSide: -1 },
-        { id: 6, team: 'yellow', role: 'def', z:  0.360, offsets: [-0.135, 0.135],     isKeeperCenter: false, handleSide:  1 },
-        { id: 7, team: 'yellow', role: 'gk',  z:  0.505, offsets: [-0.145, 0, 0.145], isKeeperCenter: true,  handleSide:  1 }
+        { id: 0, team: 'red',    role: 'gk',  x: -10.3, offsets: [-2.8, 0, 2.8],  isKeeperCenter: true,  handleSide:  1 },
+        { id: 1, team: 'red',    role: 'def', x: -7.4,  offsets: [-2.6, 2.6],     isKeeperCenter: false, handleSide:  1 },
+        { id: 2, team: 'yellow', role: 'fwd', x: -4.4,  offsets: [-4.2, 0, 4.2],  isKeeperCenter: false, handleSide: -1 },
+        { id: 3, team: 'red',    role: 'mid', x: -1.45, offsets: [-4.2, 0, 4.2],  isKeeperCenter: false, handleSide:  1 },
+        { id: 4, team: 'yellow', role: 'mid', x:  1.45, offsets: [-4.2, 0, 4.2],  isKeeperCenter: false, handleSide: -1 },
+        { id: 5, team: 'red',    role: 'fwd', x:  4.4,  offsets: [-4.2, 0, 4.2],  isKeeperCenter: false, handleSide:  1 },
+        { id: 6, team: 'yellow', role: 'def', x:  7.4,  offsets: [-2.6, 2.6],     isKeeperCenter: false, handleSide: -1 },
+        { id: 7, team: 'yellow', role: 'gk',  x: 10.3,  offsets: [-2.8, 0, 2.8],  isKeeperCenter: true,  handleSide: -1 }
       ];
 
       // =========================================================================
@@ -221,13 +228,12 @@
         isGoalPause: false,
         isGameOver: false,
         cameraMode: 'angled',     // 'angled' | 'top'
-        cameraZoom: 1.0,
+        cameraDist: 33.0,         // 相機距離目標點距離 (支援兩指捏合縮放)
+        cameraYawOffset: 0,       // 單指空白處拖曳微調水平角度
+        cameraPitchOffset: 0,     // 單指空白處拖曳微調俯仰角度
         cameraPan: new THREE.Vector3(0, 0, 0),
-        cameraBasePos: new THREE.Vector3(-0.96, 1.04, 0.58),
-        cameraBaseLookAt: new THREE.Vector3(0, 0.04, 0),
-        cameraTargetPos: new THREE.Vector3(-0.96, 1.04, 0.58),
-        cameraCurrentPos: new THREE.Vector3(-0.96, 1.04, 0.58),
-        cameraLookAt: new THREE.Vector3(0, 0.04, 0),
+        cameraCurrentPos: new THREE.Vector3(-22.0, 21.0, 14.5),
+        cameraCurrentLookAt: new THREE.Vector3(0, 0.8, 0),
         ball: {
           pos: new THREE.Vector3(0, TABLE.ballRadius, 0),
           vel: new THREE.Vector3(0, 0, 0),
@@ -243,7 +249,7 @@
       let audioCtx = null;
 
       // =========================================================================
-      // 3. Web Audio 合成音效系統
+      // 3. Web Audio 合成音效系統 (無外部音訊網址依賴)
       // =========================================================================
       function ensureAudio() {
         if (!state.soundEnabled) return null;
@@ -272,7 +278,7 @@
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(205 + vol * 95, now);
+            osc.frequency.setValueAtTime(210 + vol * 95, now);
             osc.frequency.exponentialRampToValueAtTime(52, now + 0.085);
             gain.gain.setValueAtTime(0.36 * vol, now);
             gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
@@ -284,22 +290,22 @@
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(140, now);
-            osc.frequency.exponentialRampToValueAtTime(48, now + 0.06);
+            osc.frequency.setValueAtTime(145, now);
+            osc.frequency.exponentialRampToValueAtTime(48, now + 0.065);
             gain.gain.setValueAtTime(0.24 * vol, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start(now);
-            osc.stop(now + 0.07);
+            osc.stop(now + 0.075);
           } else if (type === 'bumper') {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(92, now);
-            osc.frequency.exponentialRampToValueAtTime(36, now + 0.045);
-            gain.gain.setValueAtTime(0.14 * vol, now);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+            osc.frequency.setValueAtTime(88, now);
+            osc.frequency.exponentialRampToValueAtTime(34, now + 0.048);
+            gain.gain.setValueAtTime(0.15 * vol, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.052);
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start(now);
@@ -350,17 +356,18 @@
       }
 
       function createPitchTexture() {
+        // 寬 1792 (對應 X 長度 24.0)，高 1024 (對應 Z 寬度 14.0)
         const canvas = document.createElement('canvas');
-        canvas.width = 1024;
-        canvas.height = 1792;
+        canvas.width = 1792;
+        canvas.height = 1024;
         const ctx = canvas.getContext('2d');
 
-        // 雙色草皮條紋
+        // 雙色草皮條紋 (沿球門方向排列)
         const stripeCount = 14;
-        const stripeH = canvas.height / stripeCount;
+        const stripeW = canvas.width / stripeCount;
         for (let i = 0; i < stripeCount; i++) {
           ctx.fillStyle = i % 2 === 0 ? '#1e7b44' : '#23864c';
-          ctx.fillRect(0, i * stripeH, canvas.width, stripeH);
+          ctx.fillRect(i * stripeW, 0, stripeW, canvas.height);
         }
 
         // 白色球場線條
@@ -374,8 +381,8 @@
 
         // 中線與中圈
         ctx.beginPath();
-        ctx.moveTo(pad, canvas.height / 2);
-        ctx.lineTo(canvas.width - pad, canvas.height / 2);
+        ctx.moveTo(canvas.width / 2, pad);
+        ctx.lineTo(canvas.width / 2, canvas.height - pad);
         ctx.stroke();
 
         ctx.beginPath();
@@ -387,24 +394,24 @@
         ctx.arc(canvas.width / 2, canvas.height / 2, 18, 0, Math.PI * 2);
         ctx.fill();
 
-        // 上下大禁區與小禁區
-        const penW = 540;
-        const penH = 260;
-        const goalBoxW = 310;
-        const goalBoxH = 115;
+        // 左右大禁區與小禁區
+        const penDepth = 260;
+        const penWidth = 540;
+        const goalDepth = 115;
+        const goalWidth = 310;
 
-        // 上端 (-Z 紅隊球門區)
-        ctx.strokeRect((canvas.width - penW) / 2, pad, penW, penH);
-        ctx.strokeRect((canvas.width - goalBoxW) / 2, pad, goalBoxW, goalBoxH);
+        // 左端 (-X 紅隊球門區)
+        ctx.strokeRect(pad, (canvas.height - penWidth) / 2, penDepth, penWidth);
+        ctx.strokeRect(pad, (canvas.height - goalWidth) / 2, goalDepth, goalWidth);
         ctx.beginPath();
-        ctx.arc(canvas.width / 2, pad + penH, 110, 0.16 * Math.PI, 0.84 * Math.PI);
+        ctx.arc(pad + penDepth, canvas.height / 2, 110, -0.34 * Math.PI, 0.34 * Math.PI);
         ctx.stroke();
 
-        // 下端 (+Z 黃隊球門區)
-        ctx.strokeRect((canvas.width - penW) / 2, canvas.height - pad - penH, penW, penH);
-        ctx.strokeRect((canvas.width - goalBoxW) / 2, canvas.height - pad - goalBoxH, goalBoxW, goalBoxH);
+        // 右端 (+X 黃隊球門區)
+        ctx.strokeRect(canvas.width - pad - penDepth, (canvas.height - penWidth) / 2, penDepth, penWidth);
+        ctx.strokeRect(canvas.width - pad - goalDepth, (canvas.height - goalWidth) / 2, goalDepth, goalWidth);
         ctx.beginPath();
-        ctx.arc(canvas.width / 2, canvas.height - pad - penH, 110, 1.16 * Math.PI, 1.84 * Math.PI);
+        ctx.arc(canvas.width - pad - penDepth, canvas.height / 2, 110, 0.66 * Math.PI, 1.34 * Math.PI);
         ctx.stroke();
 
         const tex = new THREE.CanvasTexture(canvas);
@@ -491,108 +498,108 @@
           metalness: 0.02
         });
 
-        // 1. 綠色球場底板
+        // 1. 綠色球場底板 (X: 24.0, Z: 14.0)
         const pitch = new THREE.Mesh(
-          new THREE.BoxGeometry(TABLE.fieldWidth, 0.024, TABLE.fieldLength),
+          new THREE.BoxGeometry(TABLE.halfLength * 2, 0.5, TABLE.halfWidth * 2),
           pitchMat
         );
-        pitch.position.y = -0.012;
+        pitch.position.y = -0.25;
         pitch.receiveShadow = true;
         scene.add(pitch);
 
-        // 2. 左右兩側長木牆 + 球桿軸承金屬襯套
+        // 2. 兩側長木牆 (沿 X 軸延伸，位於 Z = ±7.4) + 球桿穿孔軸承環
         const sideWallGeo = new THREE.BoxGeometry(
-          TABLE.wallThickness,
+          TABLE.halfLength * 2 + TABLE.wallThickness * 2,
           TABLE.wallHeight,
-          TABLE.fieldLength + TABLE.wallThickness * 2
+          TABLE.wallThickness
         );
-        const leftWall = new THREE.Mesh(sideWallGeo, woodMat);
-        leftWall.position.set(-(TABLE.fieldWidth / 2 + TABLE.wallThickness / 2), TABLE.wallHeight / 2 - 0.02, 0);
-        leftWall.castShadow = true;
-        leftWall.receiveShadow = true;
+        const wallNegZ = new THREE.Mesh(sideWallGeo, woodMat);
+        wallNegZ.position.set(0, TABLE.wallHeight / 2 - 0.4, -(TABLE.halfWidth + TABLE.wallThickness / 2));
+        wallNegZ.castShadow = true;
+        wallNegZ.receiveShadow = true;
 
-        const rightWall = new THREE.Mesh(sideWallGeo, woodMat);
-        rightWall.position.set(TABLE.fieldWidth / 2 + TABLE.wallThickness / 2, TABLE.wallHeight / 2 - 0.02, 0);
-        rightWall.castShadow = true;
-        rightWall.receiveShadow = true;
-        scene.add(leftWall, rightWall);
+        const wallPosZ = new THREE.Mesh(sideWallGeo, woodMat);
+        wallPosZ.position.set(0, TABLE.wallHeight / 2 - 0.4, TABLE.halfWidth + TABLE.wallThickness / 2);
+        wallPosZ.castShadow = true;
+        wallPosZ.receiveShadow = true;
+        scene.add(wallNegZ, wallPosZ);
 
-        // 在木牆兩側球桿穿孔處加上深色軸承環，增加視覺機械真實感
+        // 在木牆兩側球桿穿孔處加上深色金屬軸承環
         const bearingMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.6 });
-        const bearingGeo = new THREE.CylinderGeometry(0.014, 0.014, TABLE.wallThickness + 0.004, 16);
+        const bearingGeo = new THREE.CylinderGeometry(0.28, 0.28, TABLE.wallThickness + 0.08, 16);
         ROD_CONFIGS.forEach(function (cfg) {
-          [-1, 1].forEach(function (xSign) {
+          [-1, 1].forEach(function (zSign) {
             const bearing = new THREE.Mesh(bearingGeo, bearingMat);
-            bearing.rotation.z = Math.PI / 2;
+            bearing.rotation.x = Math.PI / 2;
             bearing.position.set(
-              xSign * (TABLE.fieldWidth / 2 + TABLE.wallThickness / 2),
+              cfg.x,
               TABLE.rodHeight,
-              cfg.z
+              zSign * (TABLE.halfWidth + TABLE.wallThickness / 2)
             );
             scene.add(bearing);
           });
         });
 
-        // 3. 兩端球門牆 (含中央球門開口與上方橫樑)
-        const sideSegW = (TABLE.fieldWidth - TABLE.goalWidth) / 2;
-        const sideSegGeo = new THREE.BoxGeometry(sideSegW, TABLE.wallHeight, TABLE.wallThickness);
-        const topBeamGeo = new THREE.BoxGeometry(TABLE.goalWidth, TABLE.wallHeight - TABLE.goalHeight, TABLE.wallThickness);
+        // 3. 兩端球門牆 (位於 X = ±12.4，含中央球門開口、深色球網箱與上方橫樑)
+        const sideSegW = TABLE.halfWidth - TABLE.goalHalfWidth;
+        const sideSegGeo = new THREE.BoxGeometry(TABLE.wallThickness, TABLE.wallHeight, sideSegW);
+        const topBeamGeo = new THREE.BoxGeometry(TABLE.wallThickness, TABLE.wallHeight - TABLE.goalHeight, TABLE.goalHalfWidth * 2);
         const goalFrameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
 
-        [-1, 1].forEach(function (zSign) {
-          const zPos = zSign * (TABLE.fieldLength / 2 + TABLE.wallThickness / 2);
+        [-1, 1].forEach(function (xSign) {
+          const xPos = xSign * (TABLE.halfLength + TABLE.wallThickness / 2);
 
           const segL = new THREE.Mesh(sideSegGeo, woodMat);
-          segL.position.set(-(TABLE.goalWidth / 2 + sideSegW / 2), TABLE.wallHeight / 2 - 0.02, zPos);
+          segL.position.set(xPos, TABLE.wallHeight / 2 - 0.4, -(TABLE.goalHalfWidth + sideSegW / 2));
           segL.castShadow = true;
           segL.receiveShadow = true;
 
           const segR = new THREE.Mesh(sideSegGeo, woodMat);
-          segR.position.set(TABLE.goalWidth / 2 + sideSegW / 2, TABLE.wallHeight / 2 - 0.02, zPos);
+          segR.position.set(xPos, TABLE.wallHeight / 2 - 0.4, TABLE.goalHalfWidth + sideSegW / 2);
           segR.castShadow = true;
           segR.receiveShadow = true;
 
           const topBeam = new THREE.Mesh(topBeamGeo, woodMat);
-          topBeam.position.set(0, TABLE.goalHeight + (TABLE.wallHeight - TABLE.goalHeight) / 2 - 0.02, zPos);
+          topBeam.position.set(xPos, TABLE.goalHeight + (TABLE.wallHeight - TABLE.goalHeight) / 2 - 0.4, 0);
           topBeam.castShadow = true;
 
           const goalBox = new THREE.Mesh(
-            new THREE.BoxGeometry(TABLE.goalWidth + 0.016, TABLE.goalHeight + 0.008, 0.075),
+            new THREE.BoxGeometry(1.5, TABLE.goalHeight + 0.16, TABLE.goalHalfWidth * 2 + 0.3),
             goalFrameMat
           );
-          goalBox.position.set(0, TABLE.goalHeight / 2 - 0.01, zPos + zSign * 0.028);
+          goalBox.position.set(xPos + xSign * 0.56, TABLE.goalHeight / 2 - 0.2, 0);
 
           const pocket = new THREE.Mesh(
-            new THREE.BoxGeometry(0.11, 0.044, 0.012),
+            new THREE.BoxGeometry(0.24, 0.9, 2.2),
             goalFrameMat
           );
-          pocket.position.set(0, 0.035, zPos + zSign * (TABLE.wallThickness / 2 + 0.004));
+          pocket.position.set(xPos + xSign * (TABLE.wallThickness / 2 + 0.08), 0.72, 0);
 
           scene.add(segL, segR, topBeam, goalBox, pocket);
         });
 
         // 4. 四角深灰色防撞包角與螺絲釘細節
-        const capGeo = new THREE.BoxGeometry(0.014, TABLE.wallHeight + 0.006, TABLE.wallThickness + 0.012);
-        const screwGeo = new THREE.CylinderGeometry(0.0055, 0.0055, 0.006, 12);
+        const capGeo = new THREE.BoxGeometry(TABLE.wallThickness + 0.24, TABLE.wallHeight + 0.12, 0.28);
+        const screwGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.12, 12);
 
         [-1, 1].forEach(function (xSign) {
           [-1, 1].forEach(function (zSign) {
             const cap = new THREE.Mesh(capGeo, darkCapMat);
             cap.position.set(
-              xSign * (TABLE.fieldWidth / 2 + TABLE.wallThickness + 0.005),
-              TABLE.wallHeight / 2 - 0.02,
-              zSign * (TABLE.fieldLength / 2 + TABLE.wallThickness / 2)
+              xSign * (TABLE.halfLength + TABLE.wallThickness / 2),
+              TABLE.wallHeight / 2 - 0.4,
+              zSign * (TABLE.halfWidth + TABLE.wallThickness + 0.1)
             );
             cap.castShadow = true;
             scene.add(cap);
 
-            [0.025, 0.085].forEach(function (sy) {
+            [0.5, 1.72].forEach(function (sy) {
               const screw = new THREE.Mesh(screwGeo, screwMat);
-              screw.rotation.z = Math.PI / 2;
+              screw.rotation.x = Math.PI / 2;
               screw.position.set(
-                cap.position.x + xSign * 0.007,
+                cap.position.x,
                 sy,
-                cap.position.z
+                cap.position.z + zSign * 0.14
               );
               scene.add(screw);
             });
@@ -604,20 +611,20 @@
         const stripMat = new THREE.MeshStandardMaterial({ map: stripTex, roughness: 0.4 });
         const blueBlockMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.45 });
 
-        function buildScoreboard(teamKey, zSign) {
+        function buildScoreboard(teamKey, xSign) {
           const group = new THREE.Group();
-          const zPos = zSign * (TABLE.fieldLength / 2 + TABLE.wallThickness / 2);
-          group.position.set(0, TABLE.wallHeight - 0.015, zPos);
-          if (zSign < 0) group.rotation.y = Math.PI;
+          const xPos = xSign * (TABLE.halfLength + TABLE.wallThickness / 2);
+          group.position.set(xPos, TABLE.wallHeight - 0.3, 0);
+          group.rotation.y = xSign > 0 ? Math.PI / 2 : -Math.PI / 2;
 
-          const base = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.012, 0.032), stripMat);
-          const capL = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.018, 0.036), blueBlockMat);
-          capL.position.x = -0.148;
-          const capR = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.018, 0.036), blueBlockMat);
-          capR.position.x = 0.148;
+          const base = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.24, 0.65), stripMat);
+          const capL = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.36, 0.72), blueBlockMat);
+          capL.position.x = -2.96;
+          const capR = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.36, 0.72), blueBlockMat);
+          capR.position.x = 2.96;
 
-          const slider = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.02, 0.038), blueBlockMat);
-          slider.position.set(-0.112, 0.002, 0);
+          const slider = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.4, 0.76), blueBlockMat);
+          slider.position.set(-2.24, 0.04, 0);
           scoreSliders[teamKey] = slider;
 
           group.add(base, capL, capR, slider);
@@ -628,14 +635,14 @@
         buildScoreboard('yellow', -1);
 
         // 6. 四根木製桌腳
-        const legGeo = new THREE.BoxGeometry(0.055, 0.65, 0.055);
+        const legGeo = new THREE.BoxGeometry(1.1, 13.0, 1.1);
         [-1, 1].forEach(function (xSign) {
           [-1, 1].forEach(function (zSign) {
             const leg = new THREE.Mesh(legGeo, woodMat);
             leg.position.set(
-              xSign * (TABLE.fieldWidth / 2 + 0.008),
-              -0.34,
-              zSign * (TABLE.fieldLength / 2 + 0.008)
+              xSign * (TABLE.halfLength + 0.16),
+              -6.9,
+              zSign * (TABLE.halfWidth + 0.16)
             );
             scene.add(leg);
           });
@@ -673,36 +680,41 @@
         const shortsMat = new THREE.MeshStandardMaterial({ color: shortsHex, roughness: 0.45 });
         const bootMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.38 });
 
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.0115, 16, 16), skinMat);
-        head.position.y = 0.036;
+        // 頭部
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.235, 16, 16), skinMat);
+        head.position.y = 0.73;
         head.castShadow = true;
 
         const hair = new THREE.Mesh(
-          new THREE.SphereGeometry(0.012, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.56),
+          new THREE.SphereGeometry(0.245, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.56),
           hairMat
         );
-        hair.position.set(0, 0.037, -0.001);
+        hair.position.set(0, 0.75, 0);
 
-        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.034, 0.016), jerseyMat);
-        torso.position.y = 0.011;
+        // 球衣上身 (X 為前後踢球厚度，Z 為玩偶左右寬度)
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.68, 0.52), jerseyMat);
+        torso.position.y = 0.22;
         torso.castShadow = true;
 
-        const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.034, 14), jerseyMat);
-        collar.rotation.z = Math.PI / 2;
+        const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.68, 14), jerseyMat);
+        collar.rotation.x = Math.PI / 2;
         collar.position.y = 0;
 
-        const shorts = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.017, 0.015), shortsMat);
-        shorts.position.y = -0.014;
+        // 球褲
+        const shorts = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.34, 0.48), shortsMat);
+        shorts.position.y = -0.28;
         shorts.castShadow = true;
 
-        const legGeo = new THREE.BoxGeometry(0.0095, 0.034, 0.011);
+        // 雙腿
+        const legGeo = new THREE.BoxGeometry(0.22, 0.68, 0.19);
         const legL = new THREE.Mesh(legGeo, skinMat);
-        legL.position.set(-0.0065, -0.039, 0);
+        legL.position.set(0, -0.78, -0.13);
         const legR = new THREE.Mesh(legGeo, skinMat);
-        legR.position.set(0.0065, -0.039, 0);
+        legR.position.set(0, -0.78, 0.13);
 
-        const footBlock = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.017, 0.020), bootMat);
-        footBlock.position.set(0, -0.062, 0);
+        // 雙腳合併踢球底板 (離桿心距離 1.26)
+        const footBlock = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.34, 0.50), bootMat);
+        footBlock.position.set(0, -1.26, 0);
         footBlock.castShadow = true;
 
         fig.add(head, hair, torso, collar, shorts, legL, legR, footBlock);
@@ -726,110 +738,108 @@
           metalness: 0.12
         });
 
-        const innerHalfW = TABLE.fieldWidth / 2;                  // 0.340m
-        const outerHalfW = innerHalfW + TABLE.wallThickness;      // 0.376m
-        const bumperWidth = 0.016;
-        const playerHalfWidth = 0.013;
+        const innerHalfW = TABLE.halfWidth;                       // 7.0
+        const outerHalfW = innerHalfW + TABLE.wallThickness;      // 7.8
 
         ROD_CONFIGS.forEach(function (cfg) {
-          const maxPlayerOffset = Math.max.apply(null, cfg.offsets.map(Math.abs));
-          // 嚴格物理行程限制：
-          // 1. 最外側球員加上內壁橡膠緩衝墊圈絕不能穿入內木牆 (innerHalfW)
-          // 2. 把手護盤內緣 (handleGuardLocalX) 在最大推入時仍保持在木牆外側 (outerHalfW + 0.006m)
-          const maxLateral = Math.max(0.02, innerHalfW - maxPlayerOffset - playerHalfWidth - bumperWidth);
+          const maxOffset = Math.max.apply(null, cfg.offsets.map(Math.abs));
+          // 嚴格機械物理行程限制：
+          // maxOffset + |rod.z| <= 7.0 - 0.35 (內壁橡膠墊圈) - 0.38 (半個玩偶寬度)
+          const maxLateral = Math.max(0.4, innerHalfW - TABLE.bumperWidth - TABLE.playerHalfWidth - maxOffset);
 
-          // 把手護盤安裝在桿身上的局部 X 座標：當球桿往遠離把手方向推到極限 (-cfg.handleSide * maxLateral) 時，
-          // 護盤世界座標為 cfg.handleSide * (guardLocalX - maxLateral) = cfg.handleSide * (outerHalfW + 0.006)
-          const guardLocalX = cfg.handleSide * (outerHalfW + maxLateral + 0.006);
-          const gripLength = 0.125;
-          const handleCenterLocalX = guardLocalX + cfg.handleSide * (0.004 + gripLength / 2);
+          // 把手護手擋盤安裝在桿身上的局部 Z 座標：
+          // 當球桿往遠離把手方向推入至極限 (-cfg.handleSide * maxLateral) 時，
+          // 護盤世界座標為 cfg.handleSide * (guardLocalZ - maxLateral) = cfg.handleSide * (outerHalfW + 0.28)
+          // 保證黑色把手與護盤永遠保持在木牆外側 (|Z| >= 7.8 + 0.28)！
+          const guardLocalZ = cfg.handleSide * (outerHalfW + maxLateral + 0.28);
+          const gripLength = 2.55;
+          const handleCenterLocalZ = guardLocalZ + cfg.handleSide * (0.08 + gripLength / 2);
 
           // 遠端桿尾長度確保在拉到極限時仍穩固留在對側木牆軸承外側
-          const farEndLocalX = -cfg.handleSide * (outerHalfW + maxLateral + 0.055);
-          const handleTipLocalX = handleCenterLocalX + cfg.handleSide * (gripLength / 2);
-          const rodLength = Math.abs(handleTipLocalX - farEndLocalX);
-          const rodCenterLocalX = (handleTipLocalX + farEndLocalX) * 0.5;
+          const farEndLocalZ = -cfg.handleSide * (outerHalfW + maxLateral + 1.15);
+          const handleTipLocalZ = handleCenterLocalZ + cfg.handleSide * (gripLength / 2);
+          const rodLength = Math.abs(handleTipLocalZ - farEndLocalZ);
+          const rodCenterLocalZ = (handleTipLocalZ + farEndLocalZ) * 0.5;
 
           const rodPivot = new THREE.Group();
-          rodPivot.position.set(0, TABLE.rodHeight, cfg.z);
+          rodPivot.position.set(cfg.x, TABLE.rodHeight, 0);
 
-          // 1. 鍍鉻鋼管
+          // 1. 鍍鉻鋼管 (沿 Z 軸延伸)
           const shaft = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.0065, 0.0065, rodLength, 16),
+            new THREE.CylinderGeometry(0.13, 0.13, rodLength, 16),
             chromeMat
           );
-          shaft.rotation.z = Math.PI / 2;
-          shaft.position.x = rodCenterLocalX;
+          shaft.rotation.x = Math.PI / 2;
+          shaft.position.z = rodCenterLocalZ;
           shaft.castShadow = true;
           rodPivot.add(shaft);
 
-          // 2. 緊貼最外側玩偶的橡膠緩衝墊圈 (隨球桿移動並頂住木牆內壁，呈現真實機械限位)
+          // 2. 緊貼最外側玩偶的橡膠緩衝墊圈 (隨球桿移動並頂住木牆內壁)
           const minOffset = Math.min.apply(null, cfg.offsets);
-          const maxOffset = Math.max.apply(null, cfg.offsets);
-          const bumperGeo = new THREE.CylinderGeometry(0.014, 0.014, bumperWidth, 16);
+          const bumperGeo = new THREE.CylinderGeometry(0.28, 0.28, TABLE.bumperWidth, 16);
 
-          const bumperL = new THREE.Mesh(bumperGeo, rubberMat);
-          bumperL.rotation.z = Math.PI / 2;
-          bumperL.position.x = minOffset - playerHalfWidth - bumperWidth / 2;
+          const bumperNeg = new THREE.Mesh(bumperGeo, rubberMat);
+          bumperNeg.rotation.x = Math.PI / 2;
+          bumperNeg.position.z = minOffset - TABLE.playerHalfWidth - TABLE.bumperWidth / 2;
 
-          const bumperR = new THREE.Mesh(bumperGeo, rubberMat);
-          bumperR.rotation.z = Math.PI / 2;
-          bumperR.position.x = maxOffset + playerHalfWidth + bumperWidth / 2;
-          rodPivot.add(bumperL, bumperR);
+          const bumperPos = new THREE.Mesh(bumperGeo, rubberMat);
+          bumperPos.rotation.x = Math.PI / 2;
+          bumperPos.position.z = maxOffset + TABLE.playerHalfWidth + TABLE.bumperWidth / 2;
+          rodPivot.add(bumperNeg, bumperPos);
 
           // 3. 遠端橡膠保護帽
           const endCap = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.0095, 0.0095, 0.018, 16),
+            new THREE.CylinderGeometry(0.19, 0.19, 0.36, 16),
             rubberMat
           );
-          endCap.rotation.z = Math.PI / 2;
-          endCap.position.x = farEndLocalX;
+          endCap.rotation.x = Math.PI / 2;
+          endCap.position.z = farEndLocalZ;
           rodPivot.add(endCap);
 
           // 4. 黑色螺紋防滑把手與護手擋盤 (永遠保持在木牆外側)
           const handleGroup = new THREE.Group();
-          handleGroup.position.x = handleCenterLocalX;
+          handleGroup.position.z = handleCenterLocalZ;
 
           const guardDisc = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.025, 0.025, 0.008, 20),
+            new THREE.CylinderGeometry(0.50, 0.50, 0.16, 20),
             rubberMat
           );
-          guardDisc.rotation.z = Math.PI / 2;
-          guardDisc.position.x = -cfg.handleSide * (gripLength / 2 + 0.004);
+          guardDisc.rotation.x = Math.PI / 2;
+          guardDisc.position.z = -cfg.handleSide * (gripLength / 2 + 0.08);
           handleGroup.add(guardDisc);
 
           const gripBody = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.0165, 0.018, gripLength, 20),
+            new THREE.CylinderGeometry(0.33, 0.36, gripLength, 20),
             handleMat
           );
-          gripBody.rotation.z = Math.PI / 2;
+          gripBody.rotation.x = Math.PI / 2;
           gripBody.castShadow = true;
           handleGroup.add(gripBody);
 
           for (let r = -2; r <= 2; r++) {
             const ring = new THREE.Mesh(
-              new THREE.TorusGeometry(0.0172, 0.0022, 8, 20),
+              new THREE.TorusGeometry(0.345, 0.044, 8, 20),
               rubberMat
             );
-            ring.rotation.y = Math.PI / 2;
-            ring.position.x = r * 0.02;
+            ring.position.z = r * 0.4;
             handleGroup.add(ring);
           }
           rodPivot.add(handleGroup);
 
-          // 5. 擴大隱形整桿觸控碰撞盒 (覆蓋整支金屬桿身與把手，手機直接點擊場內桿身或把手皆可操控)
-          const hitBox = new THREE.Mesh(
-            new THREE.BoxGeometry(rodLength + 0.14, 0.095, 0.078),
+          // 5. 擴大隱形整桿觸控碰撞圓柱體 (覆蓋整支金屬桿身與把手，手機直接點擊場內桿身或把手皆可操控)
+          const hitCollider = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.95, 0.95, rodLength + 2.6, 12),
             new THREE.MeshBasicMaterial({ visible: false })
           );
-          hitBox.position.x = rodCenterLocalX;
-          rodPivot.add(hitBox);
+          hitCollider.rotation.x = Math.PI / 2;
+          hitCollider.position.z = rodCenterLocalZ;
+          rodPivot.add(hitCollider);
 
-          // 6. 安裝玩偶
-          cfg.offsets.forEach(function (offsetX, idx) {
+          // 6. 安裝球員玩偶
+          cfg.offsets.forEach(function (offsetZ, idx) {
             const isKeeper = Boolean(cfg.isKeeperCenter && idx === 1);
             const fig = createPlayerFigure(cfg.team, isKeeper);
-            fig.position.x = offsetX;
+            fig.position.z = offsetZ;
             rodPivot.add(fig);
           });
 
@@ -837,25 +847,25 @@
             id: cfg.id,
             team: cfg.team,
             role: cfg.role,
-            z: cfg.z,
+            x: cfg.x,
             offsets: cfg.offsets,
             handleSide: cfg.handleSide,
             pivot: rodPivot,
             shaft: shaft,
             gripBody: gripBody,
-            hitBox: hitBox,
-            lateralX: 0,
+            hitCollider: hitCollider,
+            lateralZ: 0,
             maxLateral: maxLateral,
-            angleX: 0,
+            tiltAngle: 0,         // 正值 = 朝 +X (黃隊球門) 前傾，負值 = 朝 -X (紅隊球門) 傾斜
             angularVel: 0,
-            targetAngleX: 0,
+            targetTiltAngle: 0,
             grabCount: 0,
             bumperHitCooldown: 0,
             aiShootCooldown: 0
           };
 
-          hitBox.userData.rod = rodData;
-          rodColliders.push(hitBox);
+          hitCollider.userData.rod = rodData;
+          rodColliders.push(hitCollider);
           state.rods.push(rodData);
           scene.add(rodPivot);
         });
@@ -893,10 +903,10 @@
 
         // 高亮我方球桿與把手
         state.rods.forEach(function (rod) {
-          rod.lateralX = 0;
-          rod.angleX = 0;
+          rod.lateralZ = 0;
+          rod.tiltAngle = 0;
           rod.angularVel = 0;
-          rod.targetAngleX = 0;
+          rod.targetTiltAngle = 0;
           rod.grabCount = 0;
           if (rod.team === team) {
             rod.gripBody.material.emissive.setHex(team === 'red' ? 0x450a0a : 0x422006);
@@ -907,57 +917,62 @@
           }
         });
 
-        state.cameraZoom = 1.0;
-        state.cameraPan.set(0, 0, 0);
-        updateCameraTarget();
+        resetCameraState();
         resetBallToCenter(true);
       }
 
-      function updateCameraTarget() {
-        // 鏡頭位置設定：讓玩家所選隊伍的球門位於畫面下方，對手球門位於畫面上方，且把手在玩家慣用手側
-        const sideSign = state.userTeam === 'yellow' ? 1 : -1;
-        const forwardSign = state.userTeam === 'yellow' ? 1 : -1;
-
-        if (state.cameraMode === 'top') {
-          state.cameraBasePos.set(sideSign * 0.14, 1.62, forwardSign * 0.06);
-          state.cameraBaseLookAt.set(0, 0.02, 0);
-          document.getElementById('camera-mode-label').textContent = '俯視';
-        } else {
-          state.cameraBasePos.set(sideSign * 0.96, 1.04, forwardSign * 0.58);
-          state.cameraBaseLookAt.set(0, 0.04, 0);
-          document.getElementById('camera-mode-label').textContent = '斜角';
-        }
-        applyCameraZoomAndPan();
+      function resetCameraState() {
+        state.cameraDist = state.cameraMode === 'top' ? 34.0 : 33.0;
+        state.cameraYawOffset = 0;
+        state.cameraPitchOffset = 0;
+        state.cameraPan.set(0, 0, 0);
+        document.getElementById('camera-mode-label').textContent = state.cameraMode === 'top' ? '俯視' : '斜角';
       }
 
-      function applyCameraZoomAndPan() {
-        const lookAt = state.cameraBaseLookAt.clone().add(state.cameraPan);
-        const offset = state.cameraBasePos.clone().sub(state.cameraBaseLookAt);
-        offset.divideScalar(state.cameraZoom);
+      function computeDesiredCamera(outPos, outLookAt) {
+        // 讓玩家所選隊伍的球門位於畫面下方，對手球門位於畫面上方，且玩家把手在慣用手側
+        const attackSignX = state.userTeam === 'yellow' ? -1 : 1;
+        const sideSignZ = state.userTeam === 'yellow' ? -1 : 1;
 
-        state.cameraLookAt.copy(lookAt);
-        state.cameraTargetPos.copy(lookAt).add(offset);
+        outLookAt.set(0, 0.8, 0).add(state.cameraPan);
+
+        const baseDir = state.cameraMode === 'top'
+          ? new THREE.Vector3(-attackSignX * 0.14, 1.0, sideSignZ * 0.08).normalize()
+          : new THREE.Vector3(-attackSignX * 0.88, 0.86, sideSignZ * 0.56).normalize();
+
+        // 套用單指在空白處微調的水平/俯仰角度
+        if (state.cameraYawOffset !== 0) {
+          baseDir.applyAxisAngle(new THREE.Vector3(0, 1, 0), state.cameraYawOffset);
+        }
+        if (state.cameraPitchOffset !== 0) {
+          const rightAxis = new THREE.Vector3().crossVectors(baseDir, new THREE.Vector3(0, 1, 0)).normalize();
+          baseDir.applyAxisAngle(rightAxis, state.cameraPitchOffset);
+          baseDir.y = THREE.MathUtils.clamp(baseDir.y, 0.25, 0.99);
+          baseDir.normalize();
+        }
+
+        outPos.copy(outLookAt).addScaledVector(baseDir, state.cameraDist);
       }
 
       function updateScoreUI() {
         document.getElementById('score-red').textContent = String(state.scores.red);
         document.getElementById('score-yellow').textContent = String(state.scores.yellow);
 
-        const step = 0.25 / 10;
+        const step = 5.0 / 10;
         if (scoreSliders.red) {
-          scoreSliders.red.position.x = -0.112 + Math.min(9, state.scores.red) * step;
+          scoreSliders.red.position.x = -2.24 + Math.min(9, state.scores.red) * step;
         }
         if (scoreSliders.yellow) {
-          scoreSliders.yellow.position.x = -0.112 + Math.min(9, state.scores.yellow) * step;
+          scoreSliders.yellow.position.x = -2.24 + Math.min(9, state.scores.yellow) * step;
         }
       }
 
       function resetBallToCenter(kickOff) {
         state.ball.pos.set(0, TABLE.ballRadius, 0);
         if (kickOff) {
-          const dirZ = Math.random() > 0.5 ? 1 : -1;
-          const dirX = (Math.random() - 0.5) * 0.65;
-          state.ball.vel.set(dirX, 0, dirZ * 0.42);
+          const dirX = Math.random() > 0.5 ? 1 : -1;
+          const dirZ = (Math.random() - 0.5) * 13.0;
+          state.ball.vel.set(dirX * 8.5, 0, dirZ);
         } else {
           state.ball.vel.set(0, 0, 0);
         }
@@ -1007,19 +1022,27 @@
       }
 
       // =========================================================================
-      // 7. 螢幕空間 1:1 投影整桿多點觸控 & 兩指縮放/平移視角
+      // 7. 精準螢幕空間向量投影整桿多點觸控 & 兩指縮放/平移視角
+      //    徹底修正左右控制方向：
+      //    透過 Vector3.project(camera) 將世界座標 (rod.x, rod.y, 0) 與 (rod.x, rod.y, 1)
+      //    投影至螢幕像素座標系 (X 向右為正，Y 向下為正)，計算單位方向向量 axisScreen，
+      //    確保 deltaZ = (deltaClientX * axisScreen.x + deltaClientY * axisScreen.y) * sensitivity
+      //    無論任何隊伍或任何鏡頭角度，手指往畫面左滑球桿就往畫面左移、往右滑就往右移！
       // =========================================================================
       function setupPointerControls() {
         const dom = renderer.domElement;
         const indicatorsLayer = document.getElementById('touch-indicators');
 
-        const pinchState = {
-          active: false,
+        const gestureState = {
+          mode: 'none', // 'none' | 'orbit' | 'pinch'
+          lastX: 0,
+          lastY: 0,
           startDist: 1,
-          startZoom: 1,
+          startCamDist: 33.0,
           startCenterX: 0,
           startCenterY: 0,
-          startPan: new THREE.Vector3()
+          startPan: new THREE.Vector3(),
+          lastTapTime: 0
         };
 
         function createIndicator(x, y) {
@@ -1028,7 +1051,7 @@
           el.style.left = x + 'px';
           el.style.top = (y - 54) + 'px';
           el.innerHTML =
-            '<div class="w-16 h-16 rounded-full border-2 border-white/90 bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center text-white shadow-xl">' +
+            '<div class="w-16 h-16 rounded-full border-2 border-white/90 bg-slate-900/72 backdrop-blur-sm flex flex-col items-center justify-center text-white shadow-xl">' +
             '<span class="ind-arrow text-xs font-black leading-none">● 垂直</span>' +
             '<span class="ind-deg text-[11px] font-bold mt-0.5 tabular-nums">0°</span>' +
             '</div>';
@@ -1053,42 +1076,48 @@
           return null;
         }
 
-        // 精準計算 3D 球桿移動軸 (+X) 在當前相機螢幕上的單位方向與每公尺像素比例
-        function getRodScreenBasis(rod) {
+        // 精準計算球桿在螢幕像素座標系中的移動軸向量 axisScreen 與進攻前傾軸向量 perpScreen
+        function computeRodScreenAxes(rod) {
           const rect = dom.getBoundingClientRect();
-          const p0 = new THREE.Vector3(rod.lateralX, TABLE.rodHeight, rod.z);
-          const p1 = new THREE.Vector3(rod.lateralX + 0.1, TABLE.rodHeight, rod.z);
+          const halfW = rect.width * 0.5;
+          const halfH = rect.height * 0.5;
 
-          p0.project(camera);
-          p1.project(camera);
+          const pOrigin = new THREE.Vector3(rod.x, TABLE.rodHeight, 0).project(camera);
+          const pPlusZ = new THREE.Vector3(rod.x, TABLE.rodHeight, 1).project(camera);
 
-          const s0x = (p0.x * 0.5 + 0.5) * rect.width;
-          const s0y = (-p0.y * 0.5 + 0.5) * rect.height;
-          const s1x = (p1.x * 0.5 + 0.5) * rect.width;
-          const s1y = (-p1.y * 0.5 + 0.5) * rect.height;
+          // 轉換為螢幕像素座標 (X 向右為正，Y 向下為正，因此 NDC Y 需乘上 -halfH)
+          const ox = pOrigin.x * halfW;
+          const oy = -pOrigin.y * halfH;
+          const zx = pPlusZ.x * halfW;
+          const zy = -pPlusZ.y * halfH;
 
-          const vx = s1x - s0x;
-          const vy = s1y - s0y;
-          const pxPer10cm = Math.hypot(vx, vy) || 1;
-          const dirX = vx / pxPer10cm;
-          const dirY = vy / pxPer10cm;
-          const metersPerPixel = 0.1 / pxPer10cm;
+          const dxZ = zx - ox;
+          const dyZ = zy - oy;
+          const pxPerUnitZ = Math.hypot(dxZ, dyZ) || 1;
+          const axisScreen = {
+            x: dxZ / pxPerUnitZ,
+            y: dyZ / pxPerUnitZ,
+            unitsPerPixel: 1.0 / pxPerUnitZ
+          };
 
-          // 垂直於球桿的螢幕軸線 (向螢幕上方延伸，代表「前傾射門」方向)
-          // 選擇 Y 分量為負 (螢幕座標 Y 向上為負) 的法向量
-          let perpX = -dirY;
-          let perpY = dirX;
-          if (perpY > 0) {
-            perpX = -perpX;
-            perpY = -perpY;
-          }
+          // 進攻前傾軸：朝對手球門 (+X for red, -X for yellow) 在螢幕上的投影方向
+          const attackSignX = state.userTeam === 'red' ? 1 : -1;
+          const pAttack = new THREE.Vector3(rod.x + attackSignX, TABLE.rodHeight, 0).project(camera);
+          const ax = pAttack.x * halfW;
+          const ay = -pAttack.y * halfH;
+
+          const dxA = ax - ox;
+          const dyA = ay - oy;
+          const lenA = Math.hypot(dxA, dyA) || 1;
+          const perpScreen = {
+            x: dxA / lenA,
+            y: dyA / lenA
+          };
 
           return {
-            dirX: dirX,
-            dirY: dirY,
-            metersPerPixel: metersPerPixel,
-            perpX: perpX,
-            perpY: perpY
+            axisScreen: axisScreen,
+            perpScreen: perpScreen,
+            attackSignX: attackSignX
           };
         }
 
@@ -1107,40 +1136,45 @@
             rod: rod,
             startX: clientX,
             startY: clientY,
-            startLateral: rod.lateralX,
-            basis: getRodScreenBasis(rod),
+            startLateralZ: rod.lateralZ,
+            axes: computeRodScreenAxes(rod),
             indicatorEl: createIndicator(clientX, clientY)
           });
         }
 
         function moveGrabbedRod(info, clientX, clientY) {
           const rod = info.rod;
-          const basis = info.basis;
-          const dx = clientX - info.startX;
-          const dy = clientY - info.startY;
+          const axisScreen = info.axes.axisScreen;
+          const perpScreen = info.axes.perpScreen;
+          const attackSignX = info.axes.attackSignX;
 
-          // 1. 沿著球桿在螢幕上的投影方向做點積，達到 1:1 跟手且左右完全不會相反
-          const alongRodPx = dx * basis.dirX + dy * basis.dirY;
-          const rawNextX = info.startLateral + alongRodPx * basis.metersPerPixel;
-          const clampedX = THREE.MathUtils.clamp(rawNextX, -rod.maxLateral, rod.maxLateral);
+          const deltaClientX = clientX - info.startX;
+          const deltaClientY = clientY - info.startY;
+
+          // 1. 沿球桿螢幕方向做點積：
+          //    deltaZ = (deltaClientX * axisScreen.x + deltaClientY * axisScreen.y) * sensitivity
+          //    確保手指往畫面左滑即往畫面左移，往右滑即往右移，1:1 精準跟手
+          const alongScreenPx = deltaClientX * axisScreen.x + deltaClientY * axisScreen.y;
+          const sensitivity = axisScreen.unitsPerPixel * 1.12;
+          const rawNextZ = info.startLateralZ + alongScreenPx * sensitivity;
+          const clampedZ = THREE.MathUtils.clamp(rawNextZ, -rod.maxLateral, rod.maxLateral);
 
           // 撞到內壁橡膠緩衝墊時觸發輕微音效提示
-          if (Math.abs(clampedX) >= rod.maxLateral - 0.0005 && Math.abs(rod.lateralX) < rod.maxLateral - 0.0005) {
+          if (Math.abs(clampedZ) >= rod.maxLateral - 0.01 && Math.abs(rod.lateralZ) < rod.maxLateral - 0.01) {
             if (rod.bumperHitCooldown <= 0) {
               playSound('bumper', 0.5);
               rod.bumperHitCooldown = 0.18;
             }
           }
-          rod.lateralX = clampedX;
+          rod.lateralZ = clampedZ;
 
-          // 2. 垂直於球桿軸線的方向控制玩偶前傾 (+tilt) 或後傾 (-tilt)
-          // 往上滑動 (alongPerpPx > 0) = 玩偶前傾朝對手球門抽射；往下滑動 = 玩偶後傾
-          const alongPerpPx = dx * basis.perpX + dy * basis.perpY;
-          const forwardSign = state.userTeam === 'red' ? 1 : -1;
+          // 2. 沿進攻前傾軸方向做點積：
+          //    手指朝對手球門方向推動 (alongPerpPx > 0) = 玩偶前傾射門 (tilt > 0)
+          //    手指朝己方球門方向拉動 (alongPerpPx < 0) = 玩偶後傾踢球 (tilt < 0)
+          const alongPerpPx = deltaClientX * perpScreen.x + deltaClientY * perpScreen.y;
           const maxTilt = 1.32; // 約 ±75.6°
-          // 靈敏度：滑動 58px 即可達到滿傾角，無死區、反應即時
-          const tilt = THREE.MathUtils.clamp((alongPerpPx / 58) * maxTilt, -maxTilt, maxTilt);
-          rod.targetAngleX = tilt * forwardSign;
+          const tilt = THREE.MathUtils.clamp((alongPerpPx / 56) * maxTilt, -maxTilt, maxTilt);
+          rod.targetTiltAngle = tilt * attackSignX;
 
           // 更新傾角視覺指示器
           const deg = Math.round((tilt / maxTilt) * 75);
@@ -1162,8 +1196,8 @@
           if (rod.grabCount === 0) {
             rod.gripBody.scale.set(1, 1, 1);
             rod.shaft.scale.set(1, 1, 1);
-            // 手指離開球桿後，目標角度立即歸零，玩偶自動彈回垂直站立姿勢
-            rod.targetAngleX = 0;
+            // 手指離開把手/桿身後，目標傾角立即歸零，玩偶自動彈回垂直站立姿勢
+            rod.targetTiltAngle = 0;
           }
           if (info.indicatorEl && info.indicatorEl.parentNode) {
             info.indicatorEl.parentNode.removeChild(info.indicatorEl);
@@ -1171,13 +1205,17 @@
           state.activeTouches.delete(pointerId);
         }
 
-        // 滑鼠事件 (桌面操作)
+        // 滑鼠操作 (桌面瀏覽器)
         dom.addEventListener('mousedown', function (e) {
           if (!state.userTeam || state.isGameOver) return;
           ensureAudio();
           const rod = pickUserRod(e.clientX, e.clientY);
           if (rod) {
             grabRod('mouse', e.clientX, e.clientY, rod);
+          } else {
+            gestureState.mode = 'orbit';
+            gestureState.lastX = e.clientX;
+            gestureState.lastY = e.clientY;
           }
         });
 
@@ -1185,32 +1223,43 @@
           const info = state.activeTouches.get('mouse');
           if (info) {
             moveGrabbedRod(info, e.clientX, e.clientY);
+          } else if (gestureState.mode === 'orbit') {
+            const dx = e.clientX - gestureState.lastX;
+            const dy = e.clientY - gestureState.lastY;
+            gestureState.lastX = e.clientX;
+            gestureState.lastY = e.clientY;
+            state.cameraYawOffset = THREE.MathUtils.clamp(state.cameraYawOffset - dx * 0.004, -0.55, 0.55);
+            state.cameraPitchOffset = THREE.MathUtils.clamp(state.cameraPitchOffset + dy * 0.004, -0.35, 0.45);
           }
         });
 
         window.addEventListener('mouseup', function () {
           releaseRod('mouse');
+          if (gestureState.mode === 'orbit') {
+            gestureState.mode = 'none';
+          }
         });
 
         dom.addEventListener('wheel', function (e) {
           if (!state.userTeam) return;
           e.preventDefault();
-          const factor = e.deltaY < 0 ? 1.08 : 0.92;
-          state.cameraZoom = THREE.MathUtils.clamp(state.cameraZoom * factor, 0.62, 1.8);
-          applyCameraZoomAndPan();
+          const factor = e.deltaY > 0 ? 1.07 : 0.93;
+          state.cameraDist = THREE.MathUtils.clamp(state.cameraDist * factor, 18.0, 52.0);
         }, { passive: false });
 
-        // 觸控事件 (手機與平板多指觸控)
+        // 觸控操作 (手機與平板多點觸控)
         dom.addEventListener('touchstart', function (e) {
           e.preventDefault();
           if (!state.userTeam || state.isGameOver) return;
           ensureAudio();
 
+          let grabbedAnyThisEvent = false;
           for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             const rod = pickUserRod(t.clientX, t.clientY);
             if (rod) {
               grabRod(t.identifier, t.clientX, t.clientY, rod);
+              grabbedAnyThisEvent = true;
             }
           }
 
@@ -1220,20 +1269,32 @@
               freeTouches.push(e.touches[i]);
             }
           }
+
           if (freeTouches.length >= 2) {
             const t1 = freeTouches[0];
             const t2 = freeTouches[1];
-            pinchState.active = true;
-            pinchState.startDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) || 1;
-            pinchState.startZoom = state.cameraZoom;
-            pinchState.startCenterX = (t1.clientX + t2.clientX) * 0.5;
-            pinchState.startCenterY = (t1.clientY + t2.clientY) * 0.5;
-            pinchState.startPan.copy(state.cameraPan);
+            gestureState.mode = 'pinch';
+            gestureState.startDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) || 1;
+            gestureState.startCamDist = state.cameraDist;
+            gestureState.startCenterX = (t1.clientX + t2.clientX) * 0.5;
+            gestureState.startCenterY = (t1.clientY + t2.clientY) * 0.5;
+            gestureState.startPan.copy(state.cameraPan);
+          } else if (freeTouches.length === 1 && !grabbedAnyThisEvent && state.activeTouches.size === 0) {
+            const now = performance.now();
+            if (now - gestureState.lastTapTime < 280) {
+              resetCameraState();
+              gestureState.lastTapTime = 0;
+            } else {
+              gestureState.lastTapTime = now;
+              gestureState.mode = 'orbit';
+              gestureState.lastX = freeTouches[0].clientX;
+              gestureState.lastY = freeTouches[0].clientY;
+            }
           }
         }, { passive: false });
 
         window.addEventListener('touchmove', function (e) {
-          if (state.activeTouches.size > 0 || pinchState.active) {
+          if (state.activeTouches.size > 0 || gestureState.mode !== 'none') {
             e.preventDefault();
           }
 
@@ -1251,25 +1312,34 @@
               freeTouches.push(e.touches[i]);
             }
           }
-          if (pinchState.active && freeTouches.length >= 2) {
+
+          if (gestureState.mode === 'pinch' && freeTouches.length >= 2) {
             const t1 = freeTouches[0];
             const t2 = freeTouches[1];
             const curDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY) || 1;
-            const ratio = curDist / pinchState.startDist;
-            state.cameraZoom = THREE.MathUtils.clamp(pinchState.startZoom * ratio, 0.62, 1.8);
+            const ratio = gestureState.startDist / curDist;
+            state.cameraDist = THREE.MathUtils.clamp(gestureState.startCamDist * ratio, 18.0, 52.0);
 
             const cx = (t1.clientX + t2.clientX) * 0.5;
             const cy = (t1.clientY + t2.clientY) * 0.5;
-            const dx = ((cx - pinchState.startCenterX) * 0.0012) / state.cameraZoom;
-            const dy = ((cy - pinchState.startCenterY) * 0.0012) / state.cameraZoom;
-            const sideSign = state.userTeam === 'yellow' ? 1 : -1;
+            const scalePan = state.cameraDist * 0.00065;
+            const dx = (cx - gestureState.startCenterX) * scalePan;
+            const dy = (cy - gestureState.startCenterY) * scalePan;
+            const attackSignX = state.userTeam === 'yellow' ? -1 : 1;
 
             state.cameraPan.set(
-              THREE.MathUtils.clamp(pinchState.startPan.x + sideSign * dy, -0.35, 0.35),
+              THREE.MathUtils.clamp(gestureState.startPan.x + attackSignX * dy, -7.0, 7.0),
               0,
-              THREE.MathUtils.clamp(pinchState.startPan.z - sideSign * dx, -0.45, 0.45)
+              THREE.MathUtils.clamp(gestureState.startPan.z - attackSignX * dx, -5.0, 5.0)
             );
-            applyCameraZoomAndPan();
+          } else if (gestureState.mode === 'orbit' && freeTouches.length === 1 && state.activeTouches.size === 0) {
+            const t = freeTouches[0];
+            const dx = t.clientX - gestureState.lastX;
+            const dy = t.clientY - gestureState.lastY;
+            gestureState.lastX = t.clientX;
+            gestureState.lastY = t.clientY;
+            state.cameraYawOffset = THREE.MathUtils.clamp(state.cameraYawOffset - dx * 0.004, -0.55, 0.55);
+            state.cameraPitchOffset = THREE.MathUtils.clamp(state.cameraPitchOffset + dy * 0.004, -0.35, 0.45);
           }
         }, { passive: false });
 
@@ -1281,8 +1351,11 @@
           for (let i = 0; i < e.touches.length; i++) {
             if (!state.activeTouches.has(e.touches[i].identifier)) freeCount++;
           }
-          if (freeCount < 2) {
-            pinchState.active = false;
+          if (freeCount < 2 && gestureState.mode === 'pinch') {
+            gestureState.mode = 'none';
+          }
+          if (freeCount === 0) {
+            gestureState.mode = 'none';
           }
         }
 
@@ -1300,24 +1373,25 @@
 
         if (sens === 0) {
           state.rods.forEach(function (rod) {
-            if (rod.team === aiTeam) rod.targetAngleX = 0;
+            if (rod.team === aiTeam) rod.targetTiltAngle = 0;
           });
           return;
         }
 
-        const forwardSign = aiTeam === 'red' ? 1 : -1;
+        // 紅隊進攻方向為 +X (+1)，黃隊進攻方向為 -X (-1)
+        const attackSignX = aiTeam === 'red' ? 1 : -1;
         const ball = state.ball;
         const norm = sens / 10;
 
-        const trackSpeedBase = 1.2 + Math.pow(norm, 1.35) * 9.5;
-        const lookAhead = sens >= 4 ? (sens - 3) * 0.022 : 0;
+        const trackSpeedBase = 1.4 + Math.pow(norm, 1.35) * 10.5;
+        const lookAhead = sens >= 4 ? (sens - 3) * 0.025 : 0;
         const cooldownMax = Math.max(0.16, 0.95 - norm * 0.78);
         const kickAngle = 0.85 + norm * 0.45;
 
-        let predX = ball.pos.x + ball.vel.x * lookAhead;
-        const halfW = TABLE.fieldWidth / 2 - TABLE.ballRadius;
-        if (predX > halfW) predX = 2 * halfW - predX;
-        if (predX < -halfW) predX = -2 * halfW - predX;
+        let predZ = ball.pos.z + ball.vel.z * lookAhead;
+        const maxBallZ = TABLE.halfWidth - TABLE.ballRadius;
+        if (predZ > maxBallZ) predZ = 2 * maxBallZ - predZ;
+        if (predZ < -maxBallZ) predZ = -2 * maxBallZ - predZ;
 
         state.rods.forEach(function (rod) {
           if (rod.team !== aiTeam) return;
@@ -1325,36 +1399,37 @@
           let bestOffset = rod.offsets[0];
           let minDist = Infinity;
           rod.offsets.forEach(function (off) {
-            const d = Math.abs(rod.lateralX + off - predX);
+            const d = Math.abs(rod.lateralZ + off - predZ);
             if (d < minDist) {
               minDist = d;
               bestOffset = off;
             }
           });
 
-          let desiredX = predX - bestOffset;
+          let desiredZ = predZ - bestOffset;
           if (rod.role === 'gk') {
-            desiredX = THREE.MathUtils.clamp(desiredX, -Math.min(rod.maxLateral, 0.145), Math.min(rod.maxLateral, 0.145));
+            const gkLimit = Math.min(rod.maxLateral, TABLE.goalHalfWidth + 0.45);
+            desiredZ = THREE.MathUtils.clamp(desiredZ, -gkLimit, gkLimit);
           } else {
-            desiredX = THREE.MathUtils.clamp(desiredX, -rod.maxLateral, rod.maxLateral);
+            desiredZ = THREE.MathUtils.clamp(desiredZ, -rod.maxLateral, rod.maxLateral);
           }
 
           const speed = rod.role === 'gk' ? trackSpeedBase * 1.15 : trackSpeedBase;
-          rod.lateralX += (desiredX - rod.lateralX) * Math.min(1, speed * dt);
+          rod.lateralZ += (desiredZ - rod.lateralZ) * Math.min(1, speed * dt);
 
           if (rod.aiShootCooldown > 0) {
             rod.aiShootCooldown -= dt;
           }
 
-          const dz = (ball.pos.z - rod.z) * forwardSign;
-          const dx = Math.abs(rod.lateralX + bestOffset - ball.pos.x);
-          const triggerW = 0.048 + norm * 0.014;
+          const dx = (ball.pos.x - rod.x) * attackSignX;
+          const dz = Math.abs(rod.lateralZ + bestOffset - ball.pos.z);
+          const triggerWidth = 0.95 + norm * 0.28;
 
-          if (dx < triggerW && dz > -0.022 && dz < 0.068 && rod.aiShootCooldown <= 0) {
-            rod.targetAngleX = forwardSign * kickAngle;
+          if (dz < triggerWidth && dx > -0.45 && dx < 1.35 && rod.aiShootCooldown <= 0) {
+            rod.targetTiltAngle = attackSignX * kickAngle;
             rod.aiShootCooldown = cooldownMax;
           } else if (rod.aiShootCooldown < cooldownMax * 0.52) {
-            rod.targetAngleX = 0;
+            rod.targetTiltAngle = 0;
           }
         });
       }
@@ -1367,24 +1442,24 @@
         const subDt = dt / subSteps;
         const ball = state.ball;
         const r = TABLE.ballRadius;
-        const halfW = TABLE.fieldWidth / 2;
-        const halfL = TABLE.fieldLength / 2;
-        const halfGoal = TABLE.goalWidth / 2;
+        const halfL = TABLE.halfLength;
+        const halfW = TABLE.halfWidth;
+        const halfGoal = TABLE.goalHalfWidth;
 
-        // 先更新每支球桿橫向位置與即時目標傾角
+        // 同步更新球桿 Z 軸橫向位置
         state.rods.forEach(function (rod) {
           if (rod.bumperHitCooldown > 0) rod.bumperHitCooldown -= dt;
-          rod.pivot.position.x = rod.lateralX;
+          rod.pivot.position.z = rod.lateralZ;
         });
 
         for (let s = 0; s < subSteps; s++) {
-          // 在每個子步進同步更新玩偶擺動角速度，確保快速揮動時不會穿過足球
+          // 在每個子步進同步更新玩偶擺動角速度，確保快速揮腳或彈回垂直時皆能精準擊球
           for (let i = 0; i < state.rods.length; i++) {
             const rod = state.rods[i];
-            const prevAngle = rod.angleX;
-            const stiffness = rod.grabCount > 0 ? 36.0 : 24.0;
-            rod.angleX += (rod.targetAngleX - rod.angleX) * Math.min(1, stiffness * subDt);
-            rod.angularVel = (rod.angleX - prevAngle) / Math.max(subDt, 0.0005);
+            const prevAngle = rod.tiltAngle;
+            const stiffness = rod.grabCount > 0 ? 38.0 : 25.0;
+            rod.tiltAngle += (rod.targetTiltAngle - rod.tiltAngle) * Math.min(1, stiffness * subDt);
+            rod.angularVel = (rod.tiltAngle - prevAngle) / Math.max(subDt, 0.0005);
           }
 
           if (!state.userTeam || state.isGoalPause || state.isGameOver) continue;
@@ -1394,118 +1469,121 @@
           ball.vel.x *= friction;
           ball.vel.z *= friction;
 
-          // 防止球在中場無球桿處完全停死
+          // 防止球在兩桿之間死角完全停死
           const speed = Math.hypot(ball.vel.x, ball.vel.z);
-          if (speed < 0.015) {
-            ball.vel.z += (Math.random() - 0.5) * 0.025;
-            ball.vel.x += (Math.random() - 0.5) * 0.025;
+          if (speed < 0.30) {
+            ball.vel.x += (Math.random() - 0.5) * 0.45;
+            ball.vel.z += (Math.random() - 0.5) * 0.45;
           }
 
           ball.pos.x += ball.vel.x * subDt;
           ball.pos.z += ball.vel.z * subDt;
 
-          // 左右木牆碰撞
-          if (ball.pos.x - r < -halfW) {
-            ball.pos.x = -halfW + r;
-            ball.vel.x = Math.abs(ball.vel.x) * 0.82;
-            playSound('wall', Math.min(1, Math.abs(ball.vel.x) * 0.8));
-          } else if (ball.pos.x + r > halfW) {
-            ball.pos.x = halfW - r;
-            ball.vel.x = -Math.abs(ball.vel.x) * 0.82;
-            playSound('wall', Math.min(1, Math.abs(ball.vel.x) * 0.8));
+          // 兩側木牆碰撞 (Z = ±7.0)
+          if (ball.pos.z - r < -halfW) {
+            ball.pos.z = -halfW + r;
+            ball.vel.z = Math.abs(ball.vel.z) * 0.82;
+            playSound('wall', Math.min(1, Math.abs(ball.vel.z) * 0.04));
+          } else if (ball.pos.z + r > halfW) {
+            ball.pos.z = halfW - r;
+            ball.vel.z = -Math.abs(ball.vel.z) * 0.82;
+            playSound('wall', Math.min(1, Math.abs(ball.vel.z) * 0.04));
           }
 
-          // 兩端底線牆與進球判定
-          if (ball.pos.z - r < -halfL) {
-            if (Math.abs(ball.pos.x) < halfGoal - r * 0.25) {
+          // 兩端球門底線牆與進球判定 (X = ±12.0)
+          if (ball.pos.x - r < -halfL) {
+            if (Math.abs(ball.pos.z) < halfGoal - r * 0.25) {
               handleGoalScored('yellow');
               break;
             } else {
-              ball.pos.z = -halfL + r;
-              ball.vel.z = Math.abs(ball.vel.z) * 0.82;
-              playSound('wall', Math.min(1, Math.abs(ball.vel.z) * 0.8));
+              ball.pos.x = -halfL + r;
+              ball.vel.x = Math.abs(ball.vel.x) * 0.82;
+              playSound('wall', Math.min(1, Math.abs(ball.vel.x) * 0.04));
             }
-          } else if (ball.pos.z + r > halfL) {
-            if (Math.abs(ball.pos.x) < halfGoal - r * 0.25) {
+          } else if (ball.pos.x + r > halfL) {
+            if (Math.abs(ball.pos.z) < halfGoal - r * 0.25) {
               handleGoalScored('red');
               break;
             } else {
-              ball.pos.z = halfL - r;
-              ball.vel.z = -Math.abs(ball.vel.z) * 0.82;
-              playSound('wall', Math.min(1, Math.abs(ball.vel.z) * 0.8));
+              ball.pos.x = halfL - r;
+              ball.vel.x = -Math.abs(ball.vel.x) * 0.82;
+              playSound('wall', Math.min(1, Math.abs(ball.vel.x) * 0.04));
             }
           }
 
-          // 四個角落防卡死斜坡微推力
-          if (Math.abs(ball.pos.x) > halfW - 0.045 && Math.abs(ball.pos.z) > halfL - 0.045) {
-            ball.vel.x -= Math.sign(ball.pos.x) * 0.6 * subDt;
-            ball.vel.z -= Math.sign(ball.pos.z) * 0.6 * subDt;
+          // 四個角落防卡死微推力
+          if (Math.abs(ball.pos.x) > halfL - 0.9 && Math.abs(ball.pos.z) > halfW - 0.9) {
+            ball.vel.x -= Math.sign(ball.pos.x) * 12.0 * subDt;
+            ball.vel.z -= Math.sign(ball.pos.z) * 12.0 * subDt;
           }
 
           // 玩偶腳掌與足球碰撞檢測
+          // 註：繞 Z 軸旋轉 +tiltAngle 時，腳底 (0, -footLen, 0) 移動至:
+          // footX = rod.x + Math.sin(tiltAngle) * footLen
+          // footY = rodHeight - Math.cos(tiltAngle) * footLen
           for (let i = 0; i < state.rods.length; i++) {
             const rod = state.rods[i];
-            const footLen = 0.062;
-            const footY = TABLE.rodHeight - Math.cos(rod.angleX) * footLen;
+            const footLen = 1.26;
+            const footY = TABLE.rodHeight - Math.cos(rod.tiltAngle) * footLen;
             // 僅當玩偶高高抬起超過球頂時才允許球從腳下通過
             if (footY > r * 2.35) continue;
 
-            const footZ = rod.z + Math.sin(rod.angleX) * footLen;
-            const footTangentialVelZ = Math.cos(rod.angleX) * footLen * rod.angularVel;
+            const footX = rod.x + Math.sin(rod.tiltAngle) * footLen;
+            const footTangentialVelX = Math.cos(rod.tiltAngle) * footLen * rod.angularVel;
 
             for (let j = 0; j < rod.offsets.length; j++) {
-              const playerX = rod.lateralX + rod.offsets[j];
-              const halfFootW = 0.0145;
-              const halfFootT = 0.0125;
+              const playerZ = rod.lateralZ + rod.offsets[j];
+              const halfFootT = 0.24; // 腳掌前後半厚 (X)
+              const halfFootW = 0.28; // 腳掌左右半寬 (Z)
 
-              const closestX = THREE.MathUtils.clamp(ball.pos.x, playerX - halfFootW, playerX + halfFootW);
-              const closestZ = THREE.MathUtils.clamp(ball.pos.z, footZ - halfFootT, footZ + halfFootT);
+              const closestX = THREE.MathUtils.clamp(ball.pos.x, footX - halfFootT, footX + halfFootT);
+              const closestZ = THREE.MathUtils.clamp(ball.pos.z, playerZ - halfFootW, playerZ + halfFootW);
 
               const dx = ball.pos.x - closestX;
               const dz = ball.pos.z - closestZ;
               const distSq = dx * dx + dz * dz;
 
               if (distSq < r * r) {
-                const dist = Math.sqrt(distSq) || 0.0001;
+                const dist = Math.sqrt(distSq) || 0.001;
                 const nx = dx / dist;
                 const nz = dz / dist;
                 const overlap = r - dist;
 
-                ball.pos.x += nx * (overlap + 0.0012);
-                ball.pos.z += nz * (overlap + 0.0012);
+                ball.pos.x += nx * (overlap + 0.025);
+                ball.pos.z += nz * (overlap + 0.025);
 
-                const relVelZ = ball.vel.z - footTangentialVelZ;
-                const vn = ball.vel.x * nx + relVelZ * nz;
+                const relVelX = ball.vel.x - footTangentialVelX;
+                const vn = relVelX * nx + ball.vel.z * nz;
 
                 if (vn < 0) {
-                  const restitution = 0.80;
+                  const restitution = 0.82;
                   ball.vel.x -= (1 + restitution) * vn * nx;
                   ball.vel.z -= (1 + restitution) * vn * nz;
-                  ball.vel.z += footTangentialVelZ * 0.96;
-                  ball.vel.x += nx * Math.abs(footTangentialVelZ) * 0.18;
+                  ball.vel.x += footTangentialVelX * 0.96;
+                  ball.vel.z += nz * Math.abs(footTangentialVelX) * 0.18;
 
-                  const maxSpd = 2.75;
+                  const maxSpd = 56.0;
                   const curSpd = Math.hypot(ball.vel.x, ball.vel.z);
                   if (curSpd > maxSpd) {
                     ball.vel.x = (ball.vel.x / curSpd) * maxSpd;
                     ball.vel.z = (ball.vel.z / curSpd) * maxSpd;
                   }
-                  playSound('kick', Math.min(1, curSpd / 1.7));
+                  playSound('kick', Math.min(1, curSpd / 34.0));
                 }
               }
             }
           }
         }
 
-        // 同步 3D 球桿旋轉角與足球位置自轉
+        // 同步 3D 球桿繞 Z 軸旋轉角 (前傾/後傾) 與足球位置自轉
         state.rods.forEach(function (rod) {
-          rod.pivot.rotation.x = rod.angleX;
+          rod.pivot.rotation.z = rod.tiltAngle;
         });
 
         if (ball.mesh) {
           ball.mesh.position.copy(ball.pos);
-          ball.mesh.rotation.x += (ball.vel.z * dt) / r;
           ball.mesh.rotation.z -= (ball.vel.x * dt) / r;
+          ball.mesh.rotation.x += (ball.vel.z * dt) / r;
         }
       }
 
@@ -1551,15 +1629,12 @@
         });
 
         document.getElementById('btn-reset-view').addEventListener('click', function () {
-          state.cameraZoom = 1.0;
-          state.cameraPan.set(0, 0, 0);
-          applyCameraZoomAndPan();
+          resetCameraState();
         });
 
         document.getElementById('btn-camera-mode').addEventListener('click', function () {
           state.cameraMode = state.cameraMode === 'angled' ? 'top' : 'angled';
-          state.cameraPan.set(0, 0, 0);
-          updateCameraTarget();
+          resetCameraState();
         });
 
         document.getElementById('btn-sound').addEventListener('click', function () {
@@ -1585,11 +1660,11 @@
         const container = document.getElementById('canvas-container');
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0xcbd5e1);
-        scene.fog = new THREE.Fog(0xcbd5e1, 3.0, 7.5);
+        scene.fog = new THREE.Fog(0xcbd5e1, 60, 150);
 
-        camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.05, 20);
+        camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.5, 300);
         camera.position.copy(state.cameraCurrentPos);
-        camera.lookAt(state.cameraLookAt);
+        camera.lookAt(state.cameraCurrentLookAt);
 
         renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -1601,17 +1676,17 @@
         raycaster = new THREE.Raycaster();
 
         const hemiLight = new THREE.HemisphereLight(0xffffff, 0x64748b, 0.92);
-        hemiLight.position.set(0, 2.5, 0);
+        hemiLight.position.set(0, 50, 0);
         scene.add(hemiLight);
 
         const dirLight = new THREE.DirectionalLight(0xffffff, 0.85);
-        dirLight.position.set(-1.1, 2.2, 1.3);
+        dirLight.position.set(-22, 44, 26);
         dirLight.castShadow = true;
         dirLight.shadow.mapSize.width = 1024;
         dirLight.shadow.mapSize.height = 1024;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 5.5;
-        const d = 0.95;
+        dirLight.shadow.camera.near = 10;
+        dirLight.shadow.camera.far = 110;
+        const d = 19;
         dirLight.shadow.camera.left = -d;
         dirLight.shadow.camera.right = d;
         dirLight.shadow.camera.top = d;
@@ -1620,11 +1695,11 @@
         scene.add(dirLight);
 
         const floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(10, 10),
+          new THREE.PlaneGeometry(200, 200),
           new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.9 })
         );
         floor.rotation.x = -Math.PI / 2;
-        floor.position.y = -0.665;
+        floor.position.y = -13.4;
         scene.add(floor);
 
         buildTable();
@@ -1639,7 +1714,10 @@
         });
       }
 
+      const desiredCamPos = new THREE.Vector3();
+      const desiredCamLook = new THREE.Vector3();
       let lastTime = performance.now();
+
       function animate(now) {
         requestAnimationFrame(animate);
         const dt = Math.min(0.05, (now - lastTime) / 1000);
@@ -1647,12 +1725,15 @@
 
         if (!state.userTeam) {
           const t = now * 0.00035;
-          camera.position.set(Math.cos(t) * 1.25, 1.08, Math.sin(t) * 1.25);
-          camera.lookAt(0, 0.04, 0);
+          camera.position.set(Math.cos(t) * 26.0, 22.0, Math.sin(t) * 26.0);
+          camera.lookAt(0, 0.8, 0);
         } else {
-          state.cameraCurrentPos.lerp(state.cameraTargetPos, Math.min(1, 9 * dt));
+          computeDesiredCamera(desiredCamPos, desiredCamLook);
+          const lerpAlpha = Math.min(1, 10 * dt);
+          state.cameraCurrentPos.lerp(desiredCamPos, lerpAlpha);
+          state.cameraCurrentLookAt.lerp(desiredCamLook, lerpAlpha);
           camera.position.copy(state.cameraCurrentPos);
-          camera.lookAt(state.cameraLookAt);
+          camera.lookAt(state.cameraCurrentLookAt);
         }
 
         updateAI(dt);
